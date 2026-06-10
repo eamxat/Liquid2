@@ -151,6 +151,11 @@
             background: #fff; border: none; cursor: pointer;
         }
 
+        input[type="checkbox"] {
+            cursor: pointer; accent-color: #fff;
+            width: 14px; height: 14px; flex-shrink: 0;
+        }
+
         .separator {
             width: 1px; height: 18px;
             background: rgba(255,255,255,0.25);
@@ -482,6 +487,13 @@
 
         <div class="separator"></div>
 
+        <div class="control-group" title="Activa un efecto de semitonos (puntos)">
+            <label for="ctrl-halftone">Halftone</label>
+            <input type="checkbox" id="ctrl-halftone">
+        </div>
+
+        <div class="separator"></div>
+
         <button id="capture-btn" title="Capturar textura en alta resolución">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
@@ -517,7 +529,7 @@
         }
     `;
 
-    // AQUI ES DONDE SE APLICÓ LA MODIFICACIÓN PARA EFECTO "AGUA / MANCHAS"
+    // AQUI SE INCLUYE LA MODIFICACIÓN PARA EFECTO "AGUA / MANCHAS" CON OPCIÓN HALFTONE
     const FS = `
         precision highp float;
         uniform vec2  uResolution;
@@ -530,6 +542,7 @@
         uniform float uSpeed;
         uniform float uElevation;
         uniform float uFrequency;
+        uniform float uHalftone;
 
         void main(){
             vec2 uv = gl_FragCoord.xy / uResolution.xy;
@@ -569,6 +582,21 @@
             vec3 col = mix(uColor1, uColor2, smoothstep(0.0, 0.4, f));
             col = mix(col, uColor3, smoothstep(0.3, 1.0, f));
 
+            // Aplicar el efecto Halftone
+            if(uHalftone > 0.5){
+                float dotSize = 8.0;
+                vec2 grid = fract(gl_FragCoord.xy / dotSize) - 0.5;
+                float radius = f * 0.7; // El radio del punto se basa en la intensidad del fluido
+                float d = length(grid);
+                
+                // Generar los puntos (circulos nítidos con antialiasing mínimo)
+                float dotMask = smoothstep(radius + 0.05, radius - 0.05, d);
+                
+                // Color de fondo oscuro (tomando el color 1 muy atenuado)
+                vec3 bg = uColor1 * 0.1;
+                col = mix(bg, col, dotMask);
+            }
+
             gl_FragColor = vec4(col, 1.0);
         }
     `;
@@ -582,7 +610,7 @@
         color1:'#001f3f', color2:'#0074d9', color3:'#7fdbff',
         speed:0.5, elevation:1.0, frequency:0.5,
         colorOffset:0.8, colorMultiplier:1.0,
-        isPanelOpen:true
+        halftone: false, isPanelOpen:true
     };
 
     const palettes = [
@@ -675,7 +703,8 @@
             uColorMultiplier: gl.getUniformLocation(prog,'uColorMultiplier'),
             uSpeed:           gl.getUniformLocation(prog,'uSpeed'),
             uElevation:       gl.getUniformLocation(prog,'uElevation'),
-            uFrequency:       gl.getUniformLocation(prog,'uFrequency')
+            uFrequency:       gl.getUniformLocation(prog,'uFrequency'),
+            uHalftone:        gl.getUniformLocation(prog,'uHalftone')
         };
         return true;
     }
@@ -692,6 +721,7 @@
         gl.uniform1f(uniforms.uSpeed,            cfg.speed);
         gl.uniform1f(uniforms.uElevation,        cfg.elevation);
         gl.uniform1f(uniforms.uFrequency,        cfg.frequency);
+        gl.uniform1f(uniforms.uHalftone,         cfg.halftone ? 1.0 : 0.0);
     }
 
     function resizeCanvas(){
@@ -769,6 +799,7 @@
                 ogl.uniform1f(ou('uSpeed'),            cfg.speed);
                 ogl.uniform1f(ou('uElevation'),        cfg.elevation);
                 ogl.uniform1f(ou('uFrequency'),        cfg.frequency);
+                ogl.uniform1f(ou('uHalftone'),         cfg.halftone ? 1.0 : 0.0);
 
                 ogl.drawArrays(ogl.TRIANGLES, 0, 6);
 
@@ -799,7 +830,8 @@
         { id:'ctrl-contrast',  key:'colorMultiplier', uniform:'uColorMultiplier', type:'float' },
         { id:'ctrl-speed',     key:'speed',           uniform:'uSpeed',           type:'float' },
         { id:'ctrl-elevation', key:'elevation',       uniform:'uElevation',       type:'float' },
-        { id:'ctrl-frequency', key:'frequency',       uniform:'uFrequency',       type:'float' }
+        { id:'ctrl-frequency', key:'frequency',       uniform:'uFrequency',       type:'float' },
+        { id:'ctrl-halftone',  key:'halftone',        uniform:'uHalftone',        type:'bool' }
     ];
 
     function updateGradientPill(c1,c2,c3){
